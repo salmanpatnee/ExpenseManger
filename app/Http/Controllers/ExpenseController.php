@@ -3,20 +3,31 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ExpenseRequest;
+use App\Http\Resources\ExpenseResource;
 use App\Models\AccountHead;
 use App\Models\Expense;
 use App\Models\JournalEntry;
 use App\Models\Transaction;
+use App\Services\JournalEntryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ExpenseController extends Controller
 {
+    private $journalEntryService;
+
+    public function __construct(JournalEntryService $journalEntryService)
+    {
+        $this->journalEntryService = $journalEntryService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        //
+        $expenses = Transaction::where('type', 'expense')->with('journalEntries')->get();
+        return ExpenseResource::collection($expenses);
     }
 
     /**
@@ -24,27 +35,30 @@ class ExpenseController extends Controller
      */
     public function store(ExpenseRequest $request)
     {
-        $attributes = $request->all();
+        try {
 
-        $attributes['account_head_id'] = AccountHead::EXPENSE_ID;
+            DB::beginTransaction();
 
-        $transaction = Transaction::create($attributes);
+            $attributes = $request->all();
 
-        JournalEntry::create([
-            'transaction_id' => $transaction->id,
-            'account_head_id' => $attributes['account_head_id'],
-            'entry_type' => 'debit',
-            'amount' => $attributes['amount']
-        ]);
+            $attributes['account_head_id']  = AccountHead::EXPENSE_ID;
+            $attributes['type']             = 'expense';
 
-        JournalEntry::create([
-            'transaction_id' => $transaction->id,
-            'account_head_id' => AccountHead::CASH_ID,
-            'entry_type' => 'credit',
-            'amount' => $attributes['amount']
-        ]);
+            $transaction = Transaction::create($attributes);
 
-        return 'Expense added.';
+            // Expense: Debit
+            $this->journalEntryService->recordEntry($transaction->id, $attributes['account_head_id'], 'debit', $attributes['amount']);
+
+            // Cash: Credit
+            $this->journalEntryService->recordEntry($transaction->id, AccountHead::CASH_ID, 'credit', $attributes['amount']);
+
+            DB::commit();
+
+            return 'Expense added.';
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return 'Failed to reverse expense entry: ' . $e->getMessage();
+        }
     }
 
     /**
@@ -66,8 +80,29 @@ class ExpenseController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Expense $expense)
+    public function destroy(Transaction $expense)
     {
-        //
+        try {
+
+            DB::beginTransaction();
+
+            $transaction = $expense;
+
+            // Cash: Debit
+            $this->journalEntryService->recordEntry($transaction->id, AccountHead::CASH_ID, 'debit', $transaction->amount);
+
+            // Expense: Credit
+            $this->journalEntryService->recordEntry($transaction->id, $transaction->account_head_id, 'credit', $transaction->amount);
+
+            $transaction->delete();
+
+            DB::commit();
+
+            return 'Expense deleted.';
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return 'Failed to reverse expense entry: ' . $e->getMessage();
+        }
     }
 }

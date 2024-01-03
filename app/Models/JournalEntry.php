@@ -10,4 +10,12 @@ class JournalEntry extends Model
     use HasFactory;
 
     protected $fillable = ['transaction_id', 'account_head_id', 'entry_type', 'amount'];
+
+    public function transaction(){
+        return $this->belongsTo(Transaction::class);
+    }
+
+    public function accountHead(){
+        return $this->belongsTo(AccountHead::class);
+    }
 }

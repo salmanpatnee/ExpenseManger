@@ -25,7 +25,6 @@ class ExpenseRequest extends FormRequest
             'date'            => 'required|date',
             'amount'          => 'required|numeric',
             'description'     => 'nullable|string',
-            'type'            => 'required|string',
         ];
     }
 }

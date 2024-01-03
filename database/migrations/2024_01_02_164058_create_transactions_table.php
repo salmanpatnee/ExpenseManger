@@ -18,6 +18,7 @@ return new class extends Migration
             $table->decimal('amount', 10, 2);
             $table->text('description')->nullable();
             $table->enum('type', ['expense', 'purchase', 'purchase_return', 'sale', 'sale_return']);
+            $table->softDeletes();
             $table->timestamps();
         });
     }
